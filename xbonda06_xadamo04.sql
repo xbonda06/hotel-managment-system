@@ -7,7 +7,7 @@
 -- Andrii Bondarenko (xbonda06)
 
 ----------------------------------------DROP TABLES----------------------------------------------------------
-
+DROP TABLE "Reservation_Room";
 DROP TABLE "Reservation";
 DROP TABLE "Service_Personnel";
 DROP TABLE "Service_Customer";
@@ -18,7 +18,6 @@ DROP TABLE "Room_type";
 DROP TABLE "Personnel";
 DROP TABLE "Customer";
 DROP TABLE "Person";
-DROP TABLE "Reservation_Room";
 
 ---------------------------------------CREATE PERSON TABLES--------------------------------------------------
 
@@ -228,7 +227,13 @@ INSERT INTO "Payment" ("amount", "pay_time", "method", "status", "currency", "cu
 VALUES (200.00, DATE '2023-04-01', 'card', 'Completed', 'usd', 1);
 
 INSERT INTO "Payment" ("amount", "pay_time", "method", "status", "currency", "customer_id")
+VALUES (800.00, DATE '2023-04-03', 'card', 'Completed', 'usd', 1);
+
+INSERT INTO "Payment" ("amount", "pay_time", "method", "status", "currency", "customer_id")
 VALUES (150.00, DATE '2023-04-02', 'cash', 'Pending', 'eur', 2);
+
+INSERT INTO "Payment" ("amount", "pay_time", "method", "status", "currency", "customer_id")
+VALUES (300.00, DATE '2023-04-08', 'cash', 'Pending', 'eur', 2);
 
 INSERT INTO "Payment" ("amount", "pay_time", "method", "status", "currency", "customer_id")
 VALUES (500.00, DATE '2023-04-03', 'card', 'Failed', 'gbp', 3);
@@ -261,13 +266,25 @@ INSERT INTO "Service_Personnel" ("service_id", "personnel_id")
 VALUES (3, 6);
 
 INSERT INTO "Reservation" ("customer_id", "arrival", "departure", "total", "people_amount")
-VALUES (1, DATE '2023-05-01', DATE '2023-05-05', 400.00, 1);
+VALUES (1, DATE '2023-05-01', DATE '2023-05-05', 450.00, 1);
+
+INSERT INTO "Reservation" ("customer_id", "arrival", "departure", "total", "people_amount")
+VALUES (1, DATE '2023-11-01', DATE '2023-11-08', 822.00, 3);
+
+INSERT INTO "Reservation" ("customer_id", "arrival", "departure", "total", "people_amount")
+VALUES (1, DATE '2023-12-24', DATE '2023-12-29', 930.00, 2);
 
 INSERT INTO "Reservation" ("customer_id", "arrival", "departure", "total", "people_amount")
 VALUES (2, DATE '2023-06-01', DATE '2023-06-05', 750.00, 2);
 
 INSERT INTO "Reservation" ("customer_id", "arrival", "departure", "total", "people_amount")
+VALUES (2, DATE '2023-08-18', DATE '2023-08-25', 950.00, 2);
+
+INSERT INTO "Reservation" ("customer_id", "arrival", "departure", "total", "people_amount")
 VALUES (3, DATE '2023-07-01', DATE '2023-07-05', 1200.00, 4);
+
+INSERT INTO "Reservation" ("customer_id", "arrival", "departure", "total", "people_amount")
+VALUES (3, DATE '2023-07-15', DATE '2023-07-20', 1400.00, 4);
 
 INSERT INTO "Reservation_Room" ("reservation_id", "room_id")
 VALUES (1, 101);
@@ -277,3 +294,65 @@ VALUES (1, 202);
 
 INSERT INTO "Reservation_Room" ("reservation_id", "room_id")
 VALUES (1, 303);
+
+-- What types of rooms do the rooms have?
+-- two tables joining
+SELECT "room_number", "name"
+FROM "Room" R, "Room_type" Rt
+WHERE R."room_type_id" = Rt."type_id";
+
+-- What job positions do the Personnel members have?
+-- Two tables joining
+SELECT "name", "surname", "job_title"
+FROM "Person" Prsn, "Personnel" Prsnl
+WHERE Prsn."person_id" = Prsnl."personnel_id";
+
+-- Print information about customers and their reservations
+-- Three tables joining
+SELECT "name", "surname", "status", "citizenship", "arrival", "departure", "total", "people_amount"
+FROM "Person" P, "Customer" C, "Reservation" R
+WHERE P."person_id" = C."customer_id" AND C."customer_id" = R."customer_id";
+
+-- How much did each person payed?
+-- GROUP BY using and aggregation function SUM
+SELECT "name", "surname", SUM("amount") AS "sum_of_pays"
+FROM "Person" P, "Customer" C, "Payment" Pmt
+WHERE P."person_id" = C."customer_id" AND C."customer_id" = Pmt."customer_id"
+GROUP BY "name", "surname";
+
+-- Which is average value of reservation costs and count of reservation each person did?
+-- Which is max value of people they had in reservations?
+-- GROUP BY using and aggregation functions AVG, COUNT and MAX
+SELECT "name", "surname", AVG("total") AS "average_reservation_cost", COUNT(*) AS "reservations_amount", MAX("people_amount") AS "max_people"
+FROM "Person" P, "Customer" C, "Reservation" R
+WHERE P."person_id" = C."customer_id" AND C."customer_id" = R."customer_id"
+GROUP BY "name", "surname";
+
+-- Print all payments of customers, that had payments, that had been done by card and had been completed
+-- EXISTS using
+SELECT "name", "surname", "amount", "currency", "pay_time", "method", Pmt."status"
+FROM "Person" P, "Customer" C, "Payment" Pmt
+WHERE P."person_id" = C."customer_id" AND C."customer_id" = Pmt."customer_id" AND EXISTS
+    (SELECT *
+    FROM "Customer" Cstmr, "Payment" Pmnt
+    WHERE Cstmr."customer_id" = Pmnt."customer_id"
+      AND C."customer_id" = Cstmr."customer_id" AND Pmnt."customer_id" = Pmt."customer_id"
+      AND Pmt."method" = 'card' AND Pmt."status" = 'Completed'
+    );
+
+-- Print all payments, that each person had, had been provided in USD
+-- IN using
+SELECT "name", "surname", "amount", "pay_time"
+FROM "Person" P, "Customer" C, "Payment" Pmt
+WHERE P."person_id" = C."customer_id" AND C."customer_id" = Pmt."customer_id" AND C."customer_id" IN (
+    SELECT "customer_id"
+    FROM "Payment" Pmt
+    WHERE Pmt."currency" = 'usd'
+);
+
+
+
+
+
+
+
