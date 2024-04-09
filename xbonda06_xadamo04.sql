@@ -108,7 +108,8 @@ CREATE TABLE Service (
     name VARCHAR2(20) NOT NULL
         CHECK (name IN ('Room Cleaning', 'Breakfast', 'Spa Access', 'Gym Access', 'Wi-Fi')),
     price DECIMAL NOT NULL,
-    required_status VARCHAR2(20) NOT NULL
+    required_status VARCHAR(10) DEFAULT 'Basic'
+            CHECK (required_status IN ('VIP', 'Basic', 'Regular') )
 );
 
 -----------------------------------------LINK TABLES------------------------------------------------
@@ -166,6 +167,23 @@ CREATE TABLE Reservation_Room (
             FOREIGN KEY (room_id) REFERENCES Room (room_number)
             ON DELETE CASCADE
 );
+
+CREATE OR REPLACE TRIGGER client_status_control
+    BEFORE INSERT OR UPDATE
+    OF customer_id, service_id ON Service_Customer
+    FOR EACH ROW
+DECLARE
+    client_status VARCHAR2(20);
+    service_req_status VARCHAR2(20);
+BEGIN
+    SELECT status INTO client_status
+    FROM Customer C WHERE C.customer_id = :NEW.customer_id;
+    SELECT required_status INTO service_req_status
+    FROM Service S WHERE S.service_id = :NEW.service_id;
+    IF client_status <> service_req_status THEN
+        RAISE_APPLICATION_ERROR(-20001, 'this customer cannot order this service');
+    END IF;
+END;
 
 --------------------------------------INSERTS-----------------------------------------------------
 
@@ -239,13 +257,13 @@ INSERT INTO Payment (amount, pay_time, method, status, currency, customer_id)
 VALUES (500.00, DATE '2023-04-03', 'card', 'Failed', 'gbp', 3);
 
 INSERT INTO Service (name, price, required_status)
-VALUES ('Room Cleaning', 25.00, 'Basic');
+VALUES ('Room Cleaning', 25.00, 'VIP');
 
 INSERT INTO Service (name, price, required_status)
-VALUES ('Breakfast', 10.00, 'VIP');
+VALUES ('Breakfast', 10.00, 'Basic');
 
 INSERT INTO Service (name, price, required_status)
-VALUES ('Wi-Fi', 0.00, 'All');
+VALUES ('Wi-Fi', 0.00, 'Regular');
 
 INSERT INTO Service_Customer (service_id, customer_id)
 VALUES (1, 1);
@@ -349,20 +367,3 @@ WHERE P.person_id = C.customer_id AND C.customer_id = Pmt.customer_id AND C.cust
     FROM Payment Pmt
     WHERE Pmt.currency = 'usd'
 );
-
-CREATE OR REPLACE TRIGGER client_status_control
-    BEFORE INSERT OR UPDATE
-    ON Service_Customer
-    FOR EACH ROW
-DECLARE
-    client_status VARCHAR2(20);
-    service_req_status VARCHAR2(20);
-BEGIN
-    SELECT status INTO client_status
-    FROM Customer C WHERE C.customer_id = NEW.customer_id;
-    SELECT required_status INTO service_req_status
-    FROM Service S WHERE S.service_id = NEW.service_id;
-    IF client_status <> service_req_status THEN
-        RAISE_APPLICATION_ERROR(-1, 'this custommer cannot order this service');
-    END IF;
-END;
