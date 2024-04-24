@@ -6,6 +6,12 @@
 -- Dmitrii Adamovich (xadamo04)
 -- Andrii Bondarenko (xbonda06)
 
+
+----------------------------------------DROP TRIGGERS-----------------------------------------------------
+
+DROP TRIGGER client_status_control;
+DROP TRIGGER room_availability_on_reservation_change;
+
 ----------------------------------------DROP TABLES----------------------------------------------------------
 DROP TABLE Reservation_Room;
 DROP TABLE Reservation;
@@ -18,6 +24,8 @@ DROP TABLE Room_type;
 DROP TABLE Personnel;
 DROP TABLE Customer;
 DROP TABLE Person;
+
+
 
 ---------------------------------------CREATE PERSON TABLES--------------------------------------------------
 
@@ -77,7 +85,8 @@ CREATE TABLE Room (
     floor INT NOT NULL
             CHECK (floor BETWEEN 0 AND 9),
     cost DECIMAL NOT NULL,
-    availability SMALLINT DEFAULT 0 NOT NULL,
+    is_reserved NUMBER(1) DEFAULT 0 NOT NULL -- 0 - not reserved, 1 - reserved
+            CHECK (is_reserved IN (0, 1)),
     description VARCHAR2(100) DEFAULT NULL,
     room_type_id INT NOT NULL,
     CONSTRAINT room_room_type_fk
@@ -168,6 +177,9 @@ CREATE TABLE Reservation_Room (
             ON DELETE CASCADE
 );
 
+-----------------------------------------TRIGGERS---------------------------------------------------
+
+-- Trigger that checks if the customer can order the service
 CREATE OR REPLACE TRIGGER client_status_control
     BEFORE INSERT OR UPDATE
     OF customer_id, service_id ON Service_Customer
@@ -183,6 +195,16 @@ BEGIN
     IF client_status <> service_req_status THEN
         RAISE_APPLICATION_ERROR(-20001, 'this customer cannot order this service');
     END IF;
+END;
+
+-- Trigger that marks the room as reserved when it is added to the reservation
+CREATE OR REPLACE TRIGGER room_availability_on_reservation_change
+    AFTER INSERT OR UPDATE
+    OF room_id ON Reservation_Room
+    FOR EACH ROW
+BEGIN
+    UPDATE Room SET is_reserved = 1
+    WHERE room_number = :NEW.room_id;
 END;
 
 --------------------------------------INSERTS-----------------------------------------------------
@@ -232,13 +254,13 @@ VALUES ('Double', 2, 1, 0, 'One double bed, pet friendly');
 INSERT INTO Room_type (name, capacity, pet_friendly, smoke_friendly, description)
 VALUES ('Suite', 4, 1, 1, 'Two bedrooms, pet and smoke friendly');
 
-INSERT INTO Room (room_number, floor, cost, availability, description, room_type_id)
+INSERT INTO Room (room_number, floor, cost, is_reserved, description, room_type_id)
 VALUES (101, 1, 100.00, 1, 'First floor single room', 1);
 
-INSERT INTO Room (room_number, floor, cost, availability, description, room_type_id)
+INSERT INTO Room (room_number, floor, cost, is_reserved, description, room_type_id)
 VALUES (202, 2, 150.00, 1, 'Second floor double room', 2);
 
-INSERT INTO Room (room_number, floor, cost, availability, description, room_type_id)
+INSERT INTO Room (room_number, floor, cost, is_reserved, description, room_type_id)
 VALUES (303, 3, 250.00, 0, 'Third floor suite', 3);
 
 INSERT INTO Payment (amount, pay_time, method, status, currency, customer_id)
@@ -308,10 +330,10 @@ INSERT INTO Reservation_Room (reservation_id, room_id)
 VALUES (1, 101);
 
 INSERT INTO Reservation_Room (reservation_id, room_id)
-VALUES (1, 202);
+VALUES (2, 202);
 
 INSERT INTO Reservation_Room (reservation_id, room_id)
-VALUES (1, 303);
+VALUES (3, 303);
 
 -- What types of rooms do the rooms have?
 -- two tables joining
@@ -367,3 +389,23 @@ WHERE P.person_id = C.customer_id AND C.customer_id = Pmt.customer_id AND C.cust
     FROM Payment Pmt
     WHERE Pmt.currency = 'usd'
 );
+
+-- Demonstrates client_status_control trigger
+INSERT INTO Service_Customer (service_id, customer_id)
+VALUES (1, 2);
+
+-- Demonstrates room_availability_on_reservation_change trigger
+
+-- add new not reserved room
+INSERT INTO Room (room_number, floor, cost, is_reserved, description, room_type_id)
+VALUES (404, 4, 300.00, 0, 'Fourth floor suite', 3);
+
+-- check if room is not reserved
+SELECT room_number, is_reserved FROM Room;
+
+-- add room to reservation
+INSERT INTO Reservation_Room (reservation_id, room_id)
+VALUES (4, 404);
+
+-- check if room is reserved
+SELECT room_number, is_reserved FROM Room;
