@@ -491,3 +491,15 @@ SELECT R.reservation_id, room_id, customer_id, arrival, departure, total, people
 FROM Reservation R JOIN Reservation_Room RR ON R.reservation_id = RR.reservation_id
 WHERE arrival = DATE '2023-10-06' AND departure = DATE '2023-10-25';
 
+GRANT ALL ON Person TO xadamo04;
+GRANT ALL ON Customer TO xadamo04;
+GRANT ALL ON Personnel TO xadamo04;
+GRANT ALL ON Room TO xadamo04;
+GRANT ALL ON Room_type TO xadamo04;
+GRANT ALL ON Payment TO xadamo04;
+GRANT ALL ON Service TO xadamo04;
+GRANT ALL ON Service_Customer TO xadamo04;
+GRANT ALL ON Service_Personnel TO xadamo04;
+GRANT ALL ON Reservation TO xadamo04;
+GRANT ALL ON Reservation_Room TO xadamo04;
+GRANT EXECUTE ON create_reservation TO xadamo04;
