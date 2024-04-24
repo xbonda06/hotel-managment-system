@@ -280,6 +280,42 @@ END;
 /
 show errors;
 
+CREATE OR REPLACE PROCEDURE calculate_customer_balance(
+    p_customer_id IN Customer.customer_id%TYPE
+)
+IS
+    v_customer_name Person.name%TYPE;
+    v_customer_surname Person.surname%TYPE;
+    v_total_due DECIMAL(10, 2);
+    v_total_paid DECIMAL(10, 2);
+    v_total_amount DECIMAL(10, 2);
+BEGIN
+    SELECT NVL(SUM(R.total), 0) + NVL(SUM(S.price), 0)
+    INTO v_total_due
+    FROM Reservation R
+    LEFT JOIN Service_Customer SC ON R.customer_id = SC.customer_id
+    LEFT JOIN Service S ON SC.service_id = S.service_id
+    WHERE R.customer_id = p_customer_id;
+
+    SELECT NVL(SUM(P.amount), 0)
+    INTO v_total_paid
+    FROM Payment P
+    WHERE P.customer_id = p_customer_id;
+
+    SELECT name, surname INTO v_customer_name, v_customer_surname
+    FROM Person
+    WHERE person_id = p_customer_id;
+
+    v_total_amount := v_total_due - v_total_paid;
+
+    DBMS_OUTPUT.put_line('Customer ' || v_customer_name || ' ' || v_customer_surname || ' have total orders on: $' || v_total_due);
+    DBMS_OUTPUT.put_line('Customer ' || v_customer_name || ' ' || v_customer_surname || ' paid: $' || v_total_paid);
+    DBMS_OUTPUT.put_line('Customer ' || v_customer_name || ' ' || v_customer_surname || ' have to pay: $' || v_total_amount);
+
+END;
+/
+
+
 --------------------------------------INSERTS-----------------------------------------------------
 
 INSERT INTO Person (name, surname, contact_Number, age, gender, date_of_birth)
@@ -490,6 +526,44 @@ BEGIN create_reservation(1, DATE '2023-10-06', DATE '2023-10-25', 1, 101); END;/
 SELECT R.reservation_id, room_id, customer_id, arrival, departure, total, people_amount
 FROM Reservation R JOIN Reservation_Room RR ON R.reservation_id = RR.reservation_id
 WHERE arrival = DATE '2023-10-06' AND departure = DATE '2023-10-25';
+
+
+-- Demonstrates calculate_customer_balance procedure
+
+-- add new Person
+INSERT INTO Person (name, surname, contact_Number, age, gender, date_of_birth)
+VALUES  ('Sana', 'Muden', '+420456789012', 24, 'male', DATE '2000-04-03');
+
+-- add new Customer
+INSERT INTO Customer (customer_id, pas_number, status, citizenship)
+VALUES (7, 987654321, 'VIP', 'CZ');
+
+-- create reservation for new customer
+BEGIN create_reservation(7, DATE '2023-09-1', DATE '2023-09-25', 1, 101); END;/
+
+-- check how much customer have to pay for reservation
+-- in this demonstrative case, customer have to pay $2400
+SELECT R.reservation_id, room_id, total
+FROM Reservation R JOIN Reservation_Room RR ON R.reservation_id = RR.reservation_id
+WHERE R.customer_id = 7;
+
+-- add services to customer
+INSERT INTO Service_Customer (service_id, customer_id)
+VALUES (1, 7);
+
+-- check how much customer have to pay for services
+-- in this demonstrative case, customer have to pay $25 for room cleaning
+-- total amount to pay is $2425
+SELECT P.name, surname, price
+FROM Person P, Customer C, Service S, Service_Customer SC
+WHERE P.person_id = C.customer_id AND C.customer_id = SC.customer_id AND SC.service_id = S.service_id;
+
+-- add payment for customer on $1000
+INSERT INTO Payment (amount, pay_time, method, status, currency, customer_id)
+VALUES (1000.00, DATE '2023-09-01', 'card', 'Completed', 'usd', 7);
+
+-- check how much customer have to pay now
+BEGIN calculate_customer_balance(7); END;/
 
 GRANT ALL ON Person TO xadamo04;
 GRANT ALL ON Customer TO xadamo04;
