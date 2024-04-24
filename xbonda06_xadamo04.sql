@@ -10,7 +10,7 @@
 ----------------------------------------DROP TRIGGERS-----------------------------------------------------
 
 DROP TRIGGER client_status_control;
-DROP TRIGGER room_availability_on_reservation_change;
+DROP TRIGGER room_availability_on_reservation_change_true;
 
 ----------------------------------------DROP TABLES----------------------------------------------------------
 DROP TABLE Reservation_Room;
@@ -196,9 +196,10 @@ BEGIN
         RAISE_APPLICATION_ERROR(-20001, 'this customer cannot order this service');
     END IF;
 END;
+/
 
 -- Trigger that marks the room as reserved when it is added to the reservation
-CREATE OR REPLACE TRIGGER room_availability_on_reservation_change
+CREATE OR REPLACE TRIGGER room_availability_on_reservation_change_true
     AFTER INSERT OR UPDATE
     OF room_id ON Reservation_Room
     FOR EACH ROW
@@ -206,6 +207,78 @@ BEGIN
     UPDATE Room SET is_reserved = 1
     WHERE room_number = :NEW.room_id;
 END;
+/
+
+-----------------------------------------PROCEDURES---------------------------------------------------
+
+CREATE OR REPLACE PROCEDURE create_reservation(
+    p_customer_id IN Reservation.customer_id%TYPE,
+    p_arrival IN Reservation.arrival%TYPE,
+    p_departure IN Reservation.departure%TYPE,
+    p_people_amount IN Reservation.people_amount%TYPE,
+    p_room_number IN Room.room_number%TYPE
+) AUTHID CURRENT_USER
+IS
+    v_total Reservation.total%TYPE;
+    v_room_cost Room.cost%TYPE;
+    v_room_status Room.is_reserved%TYPE;
+    v_reservation_exists NUMBER := 0;
+    v_max_people Room_type.capacity%TYPE;
+    v_stay_duration NUMBER;
+    v_reservation_id Reservation.reservation_id%TYPE;
+    CURSOR reservation_cursor IS
+        SELECT arrival, departure
+        FROM Reservation_Room
+        JOIN Reservation ON Reservation_Room.reservation_id = Reservation.reservation_id
+        WHERE room_id = p_room_number;
+BEGIN
+    SELECT cost INTO v_room_cost
+    FROM Room
+    WHERE room_number = p_room_number;
+
+    SELECT is_reserved INTO v_room_status
+    FROM Room
+    WHERE room_number = p_room_number;
+
+    SELECT capacity INTO v_max_people
+    FROM Room R JOIN Room_type Rt ON R.room_type_id = Rt.type_id
+    WHERE R.room_number = p_room_number;
+
+    IF(p_people_amount > v_max_people) THEN
+        RAISE_APPLICATION_ERROR(-20002, 'This room cannot accommodate this number of people');
+    END IF;
+
+    IF v_room_status = 1 THEN
+        FOR reservation_rec IN reservation_cursor
+        LOOP
+            IF (p_arrival BETWEEN reservation_rec.arrival AND reservation_rec.departure) OR
+               (p_departure BETWEEN reservation_rec.arrival AND reservation_rec.departure) THEN
+                v_reservation_exists := 1;
+                EXIT;
+            END IF;
+        END LOOP;
+
+        IF v_reservation_exists = 1 THEN
+            RAISE_APPLICATION_ERROR(-20003, 'This room is already reserved for this period');
+        END IF;
+
+        v_stay_duration := p_departure - p_arrival;
+
+        v_total := v_stay_duration * v_room_cost;
+
+        INSERT INTO Reservation (customer_id, arrival, departure, total, people_amount)
+        VALUES (p_customer_id, p_arrival, p_departure, v_total, p_people_amount);
+
+        SELECT reservation_id INTO v_reservation_id
+        FROM Reservation
+        WHERE customer_id = p_customer_id AND arrival = p_arrival AND departure = p_departure;
+
+        INSERT INTO Reservation_Room (reservation_id, room_id)
+        VALUES (v_reservation_id, p_room_number);
+    END IF;
+END;
+/
+show errors;
 
 --------------------------------------INSERTS-----------------------------------------------------
 
@@ -391,8 +464,8 @@ WHERE P.person_id = C.customer_id AND C.customer_id = Pmt.customer_id AND C.cust
 );
 
 -- Demonstrates client_status_control trigger
-INSERT INTO Service_Customer (service_id, customer_id)
-VALUES (1, 2);
+-- INSERT INTO Service_Customer (service_id, customer_id)
+-- VALUES (1, 2);
 
 -- Demonstrates room_availability_on_reservation_change trigger
 
@@ -409,3 +482,12 @@ VALUES (4, 404);
 
 -- check if room is reserved
 SELECT room_number, is_reserved FROM Room;
+
+-- call create_reservation procedure
+BEGIN create_reservation(1, DATE '2023-10-06', DATE '2023-10-25', 1, 101); END;/
+
+-- check if reservation was added
+SELECT R.reservation_id, room_id, customer_id, arrival, departure, total, people_amount
+FROM Reservation R JOIN Reservation_Room RR ON R.reservation_id = RR.reservation_id
+WHERE arrival = DATE '2023-10-06' AND departure = DATE '2023-10-25';
+
