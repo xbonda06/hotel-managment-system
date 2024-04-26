@@ -12,6 +12,8 @@ DROP TRIGGER room_availability_on_reservation_change_true;
 DROP PROCEDURE create_reservation;
 DROP PROCEDURE calculate_customer_balance;
 
+DROP MATERIALIZED VIEW service_orders_count_mv;
+
 DROP TABLE Reservation_Room;
 DROP TABLE Reservation;
 DROP TABLE Service_Personnel;
@@ -498,12 +500,36 @@ WHERE P.person_id = C.customer_id AND C.customer_id = Pmt.customer_id AND C.cust
     WHERE Pmt.currency = 'usd'
 );
 
+-- Complex SELECT query using WITH clause and CASE operator
+WITH Payment_Sum AS (
+    SELECT
+        customer_id,
+        SUM(CASE
+            WHEN currency = 'usd' THEN amount
+            WHEN currency = 'eur' THEN amount * 1.2 -- Convert EUR to USD with exchange rate 1 USD = 1.2 EUR
+            WHEN currency = 'gbp' THEN amount * 1.4 -- Convert GBP to USD with exchange rate 1 USD = 1.4 GBP
+            ELSE amount -- Keep other currencies unchanged
+        END) AS total_payment_usd
+    FROM Payment
+    GROUP BY customer_id
+)
+SELECT
+    P.name AS customer_name,
+    C.status AS customer_status,
+    PS.total_payment_usd AS total_payment_in_usd
+FROM Person P
+JOIN Customer C ON P.person_id = C.customer_id
+JOIN Payment_Sum PS ON C.customer_id = PS.customer_id;
+
+
+
+-----------------------------------------TRIGGER DEMONSTRATION--------------------------------------------
+
 -- Demonstrates client_status_control trigger
--- INSERT INTO Service_Customer (service_id, customer_id)
--- VALUES (1, 2);
+INSERT INTO Service_Customer (service_id, customer_id)
+VALUES (1, 2);
 
 -- Demonstrates room_availability_on_reservation_change trigger
-
 -- add new not reserved room
 INSERT INTO Room (room_number, floor, cost, is_reserved, description, room_type_id)
 VALUES (404, 4, 300.00, 0, 'Fourth floor suite', 3);
@@ -515,8 +541,10 @@ SELECT room_number, is_reserved FROM Room;
 INSERT INTO Reservation_Room (reservation_id, room_id)
 VALUES (4, 404);
 
--- check if room is reserved
+-- check if room is not reserved
 SELECT room_number, is_reserved FROM Room;
+
+-----------------------------------------PROCEDURES DEMONSTRATION--------------------------------------------
 
 -- call create_reservation procedure
 BEGIN create_reservation(1, DATE '2023-10-06', DATE '2023-10-25', 1, 101); END;/
@@ -526,9 +554,7 @@ SELECT R.reservation_id, room_id, customer_id, arrival, departure, total, people
 FROM Reservation R JOIN Reservation_Room RR ON R.reservation_id = RR.reservation_id
 WHERE arrival = DATE '2023-10-06' AND departure = DATE '2023-10-25';
 
-
 -- Demonstrates calculate_customer_balance procedure
-
 -- add new Person
 INSERT INTO Person (name, surname, contact_Number, age, gender, date_of_birth)
 VALUES  ('Sana', 'Muden', '+420456789012', 24, 'male', DATE '2000-04-03');
@@ -563,6 +589,8 @@ VALUES (1000.00, DATE '2023-09-01', 'card', 'Completed', 'usd', 7);
 
 -- check how much customer have to pay now
 BEGIN calculate_customer_balance(7); END;/
+
+-----------------------------------------EXPLAIN PLAN---------------------------------------------------
 
 DROP INDEX reservation_arrival_index;
 DROP INDEX person_contact_number_index;
@@ -600,6 +628,23 @@ HAVING COUNT(SC.service_id) > 0
 ORDER BY P.name;
 SELECT * FROM TABLE(DBMS_XPLAN.DISPLAY);
 
+-----------------------------------------MATERIALIZED VIEW---------------------------------------------------
+
+CREATE MATERIALIZED VIEW service_orders_count_mv
+AS
+SELECT
+    P.name AS customer_name,
+    C.status AS customer_status,
+    COUNT(SC.service_id) AS service_orders_count
+FROM Person P
+JOIN Customer C ON P.person_id = C.customer_id
+JOIN Reservation R ON C.customer_id = R.customer_id
+JOIN Service_Customer SC ON C.customer_id = SC.customer_id
+GROUP BY P.name, C.status;
+
+SELECT * FROM service_orders_count_mv;
+
+-----------------------------------------GRANDES---------------------------------------------------
 
 GRANT ALL ON Person TO xadamo04;
 GRANT ALL ON Customer TO xadamo04;
@@ -613,3 +658,6 @@ GRANT ALL ON Service_Personnel TO xadamo04;
 GRANT ALL ON Reservation TO xadamo04;
 GRANT ALL ON Reservation_Room TO xadamo04;
 GRANT EXECUTE ON create_reservation TO xadamo04;
+GRANT EXECUTE ON calculate_customer_balance TO xadamo04;
+
+GRANT ALL ON service_orders_count_mv TO xadamo04;
