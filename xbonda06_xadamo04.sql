@@ -6,13 +6,12 @@
 -- Dmitrii Adamovich (xadamo04)
 -- Andrii Bondarenko (xbonda06)
 
-
-----------------------------------------DROP TRIGGERS-----------------------------------------------------
-
 DROP TRIGGER client_status_control;
 DROP TRIGGER room_availability_on_reservation_change_true;
 
-----------------------------------------DROP TABLES----------------------------------------------------------
+DROP PROCEDURE create_reservation;
+DROP PROCEDURE calculate_customer_balance;
+
 DROP TABLE Reservation_Room;
 DROP TABLE Reservation;
 DROP TABLE Service_Personnel;
@@ -322,7 +321,7 @@ INSERT INTO Person (name, surname, contact_Number, age, gender, date_of_birth)
 VALUES  ('Ondrej', 'Novak', '+420456789012', 24, 'male', DATE '2000-04-03');
 
 INSERT INTO Person (name, surname, contact_Number, age, gender, date_of_birth)
-VALUES  ('Andrii', 'Bohdan', '+380668883333', 29, 'male', DATE '1994-10-06');
+VALUES  ('Andrii', 'Bohdan', '+420668883333', 29, 'male', DATE '1994-10-06');
 
 INSERT INTO Person (name, surname, contact_Number, age, gender, date_of_birth)
 VALUES  ('Dmitrii', 'Volkov', '+788002553535', 23, 'another', DATE '2001-04-03');
@@ -564,6 +563,43 @@ VALUES (1000.00, DATE '2023-09-01', 'card', 'Completed', 'usd', 7);
 
 -- check how much customer have to pay now
 BEGIN calculate_customer_balance(7); END;/
+
+DROP INDEX reservation_arrival_index;
+DROP INDEX person_contact_number_index;
+
+EXPLAIN PLAN FOR
+SELECT
+    P.name AS customer_name,
+    C.status AS customer_status,
+    COUNT(SC.service_id) AS service_orders_count
+FROM Person P
+JOIN Customer C ON P.person_id = C.customer_id
+JOIN Reservation R ON C.customer_id = R.customer_id
+JOIN Service_Customer SC ON C.customer_id = SC.customer_id
+WHERE R.arrival > DATE '2023-07-01' AND P.contact_Number LIKE '+420%'
+GROUP BY P.name, C.status
+HAVING COUNT(SC.service_id) > 0
+ORDER BY P.name;
+SELECT * FROM TABLE(DBMS_XPLAN.DISPLAY);
+
+CREATE INDEX reservation_arrival_index ON Reservation(arrival);
+CREATE INDEX person_contact_number_index ON Person(contact_Number);
+
+EXPLAIN PLAN FOR
+SELECT
+    P.name AS customer_name,
+    C.status AS customer_status,
+    COUNT(SC.service_id) AS service_orders_count
+FROM Person P
+JOIN Customer C ON P.person_id = C.customer_id
+JOIN Reservation R ON C.customer_id = R.customer_id
+JOIN Service_Customer SC ON C.customer_id = SC.customer_id
+WHERE R.arrival > DATE '2023-07-01' AND P.contact_Number LIKE '+420%'
+GROUP BY P.name, C.status
+HAVING COUNT(SC.service_id) > 0
+ORDER BY P.name;
+SELECT * FROM TABLE(DBMS_XPLAN.DISPLAY);
+
 
 GRANT ALL ON Person TO xadamo04;
 GRANT ALL ON Customer TO xadamo04;
